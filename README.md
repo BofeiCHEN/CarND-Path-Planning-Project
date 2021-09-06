@@ -211,7 +211,7 @@ Beside of changing lane, acceleration and deacceleration are also important beha
 ### Trajectory Generation
 The trajectory generation is implemented according the video of Project Q&A where the spline libary is used.
 
-In order to generate trajectory, some waypoints should be chose. Considering of tracking reference state, the staring point could be where the car is or at the previous paths and point according the previous path size:
+In order to generate trajectory, **some waypoints should be chosen**. Considering of tracking reference state, the staring point could be where the car is or at the previous paths and point according the previous path size:
 ```C++
           //if previous size is almost empty, use the car as starting reference
           if(prev_size < 2)
@@ -270,7 +270,7 @@ Then three waypoints are calculated in the lane distance of 30, 60 and 90 meters
           ptsy.push_back(next_wp1[1]);
           ptsy.push_back(next_wp2[1]);
 ```
-After all waypoints are chosen, one spline is created for interpolation:
+After all waypoints are chosen, **one spline is created for interpolation**:
 ```C++
           // create a spline
           tk::spline s;
@@ -278,7 +278,7 @@ After all waypoints are chosen, one spline is created for interpolation:
           // set (x, y) points to the spline
           s.set_points(ptsx, ptsy);
 ```
-For the new trajectory, we can start from points in the previous path without processed for reducing the calculation:
+For the **new trajectory**, we can start from points in the previous path without processed for reducing the calculation:
 ```C++
           for(int i=0; i<previous_path_x.size(); i++)
           {
