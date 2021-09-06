@@ -123,6 +123,78 @@ This state machine is implement use the following code (Line 194-223):
               break;
             }
 ```
+
+Before the running of state machine, the left and right lane is checked if they are clear for changing lane.
+```C++
+          for(int i=0; i<sensor_fusion.size(); i++)
+          {
+            //car is in my lane
+            float d = sensor_fusion[i][6];
+            double vx = sensor_fusion[i][3];
+            double vy = sensor_fusion[i][4];
+            double check_speed = sqrt(vx*vx + vy*vy);
+            double check_car_s = sensor_fusion[i][5];
+
+            check_car_s += ((double)prev_size*0.02*check_speed);//if using previous points can project s value out
+            if(d<(2+4*lane+2) && d>(2+4*lane-2))
+            {
+              //check s values greater than mine and s gap
+              if((check_car_s > car_s) && ((check_car_s - car_s)<30))
+              {
+                too_close = true;
+                current_lane_speed = check_speed;
+              }
+            }
+
+            double front_safe_dis = 20;
+            double behind_safe_dis = 10;
+            //check left lane
+            if(d <(2+4*(lane-1)+2) && d>(2+4*(lane-1)-2))
+            {
+              
+              //if check_car in behind but too close, left lane not clear
+              if((check_car_s < car_s) && ((car_s - check_car_s)<behind_safe_dis))
+              {
+                left_clear = false;
+              }
+              //if check_car in front but too close, left lane not clear 
+              else if((check_car_s > car_s) && ((check_car_s - car_s)<front_safe_dis))
+              {
+                left_clear = false;
+              }
+              else if((check_car_s < car_s) && ((check_speed - ref_vel)>10))
+              {
+                left_clear = false;
+              }
+
+              if(check_car_s > car_s)
+                left_lane_speed = check_speed;
+            }
+
+            //check right lane
+            if(d <(2+4*(lane+1)+2) && d>(2+4*(lane+1)-2))
+            {
+              //if check_car in behind but too close, right lane not clear
+              if((check_car_s < car_s) && ((car_s - check_car_s)<behind_safe_dis))
+              {
+                right_clear = false;
+              }
+              //if check_car in front but too close, right lane not clear 
+              else if((check_car_s > car_s) && ((check_car_s - car_s)<front_safe_dis))
+              {
+                right_clear = false;
+              }
+              else if((check_car_s < car_s) && ((check_speed - ref_vel)>10))
+              {
+                right_clear = false;
+              }
+
+              if(check_car_s > car_s)
+                right_lane_speed = check_speed;
+            }
+            
+          }
+```
 Beside of changing lane, acceleration and deacceleration are also important behavior. According the video of Project Q&A, those two behavior can be implemented as following:
 ```C++
           if(too_close)
@@ -137,7 +209,112 @@ Beside of changing lane, acceleration and deacceleration are also important beha
           }
 ```
 ### Trajectory Generation
+The trajectory generation is implemented according the video of Project Q&A where the spline libary is used.
 
+In order to generate trajectory, some waypoints should be chose. Considering of tracking reference state, the staring point could be where the car is or at the previous paths and point according the previous path size:
+```C++
+          //if previous size is almost empty, use the car as starting reference
+          if(prev_size < 2)
+          {
+            // use two points that make the path tangent to the car 
+            double prev_car_x = car_x - cos(car_yaw);
+            double prev_car_y = car_y - sin(car_yaw);
+
+            ptsx.push_back(prev_car_x);
+            ptsx.push_back(car_x);
+
+            ptsy.push_back(prev_car_y);
+            ptsy.push_back(car_y);  
+          }
+          // use the previous path's end point as starting reference
+          else
+          {
+            // redefine reference state as previous path end point
+            ref_x = previous_path_x[prev_size - 1];
+            ref_y = previous_path_y[prev_size - 1];
+
+            double ref_x_prev = previous_path_x[prev_size - 2];
+            double ref_y_prev = previous_path_y[prev_size - 2];
+            ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
+
+            //Ust two points that make the path tangent to the previous path's end point
+            ptsx.push_back(ref_x_prev);
+            ptsx.push_back(ref_x);
+
+            ptsy.push_back(ref_y_prev);
+            ptsy.push_back(ref_y); 
+          }
+```
+
+where the ```ptsx``` and ```ptsy``` is two vector of waypoints:
+```C++
+          vector<double> ptsx;
+          vector<double> ptsy;
+```
+The ```prev_size``` is previous path size:
+```C++
+    int prev_size = previous_path_x.size(); 
+```
+Then three waypoints are calculated in the lane distance of 30, 60 and 90 meters:
+```C++
+ //In Frenet add evenly 30m spaced points ahead of the starting reference
+          vector<double> next_wp0 = getXY(car_s + 30, (2 + 4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> next_wp1 = getXY(car_s + 60, (2 + 4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> next_wp2 = getXY(car_s + 90, (2 + 4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+          ptsx.push_back(next_wp0[0]);
+          ptsx.push_back(next_wp1[0]);
+          ptsx.push_back(next_wp2[0]);
+
+          ptsy.push_back(next_wp0[1]);
+          ptsy.push_back(next_wp1[1]);
+          ptsy.push_back(next_wp2[1]);
+```
+After all waypoints are chosen, one spline is created for interpolation:
+```C++
+          // create a spline
+          tk::spline s;
+
+          // set (x, y) points to the spline
+          s.set_points(ptsx, ptsy);
+```
+For the new trajectory, we can start from points in the previous path without processed for reducing the calculation:
+```C++
+          for(int i=0; i<previous_path_x.size(); i++)
+          {
+            next_x_vals.push_back(previous_path_x[i]);
+            next_y_vals.push_back(previous_path_y[i]);
+          }
+```
+
+Then the remainder points can be generated as follwing:
+```C++
+//Fill up the rest of our path planner after filling it with previous points, here we will always output 50 points 
+          int num_points = 50;
+
+          for( int i = 1; i <= num_points - prev_size; i++ ) 
+          {
+              
+            double N = target_dist/(0.02*ref_vel/2.24);
+            double x_point = x_add_on + target_x/N;
+            double y_point = s(x_point);
+            
+            x_add_on = x_point;
+            
+            double x_ref = x_point;
+            double y_ref = y_point;
+            //Rotate back to normal after rotating it earlier
+            x_point = x_ref*cos(ref_yaw) - y_ref*sin(ref_yaw);
+            y_point = x_ref*sin(ref_yaw) + y_ref*cos(ref_yaw);
+            
+            x_point += ref_x;
+            y_point += ref_y;
+            
+            next_x_vals.push_back(x_point);
+            next_y_vals.push_back(y_point);
+          }
+```
+In here, we keep the trajectory points in 50.
 
 ## Details
 
