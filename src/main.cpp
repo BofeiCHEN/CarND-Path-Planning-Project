@@ -133,8 +133,6 @@ int main() {
               //check s values greater than mine and s gap
               if((check_car_s > car_s) && ((check_car_s - car_s)<30))
               {
-                // Do some logic here, lower referene velocity so we dont crash in to the car infront of us, could also flag to try to change lanes
-                //ref_vel = 29.5;//mph
                 too_close = true;
                 current_lane_speed = check_speed;
               }
