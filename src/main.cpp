@@ -111,41 +111,141 @@ int main() {
           }
 
           bool too_close = false;
-
+          bool left_clear = true; //left lane is clear for changing
+          bool right_clear = true; //right lane is clear for changing
+          double max_speed = 49.5;
+          double left_lane_speed = max_speed;
+          double current_lane_speed = max_speed;
+          double right_lane_speed = max_speed;
           //find ref_v to use
           for(int i=0; i<sensor_fusion.size(); i++)
           {
             //car is in my lane
             float d = sensor_fusion[i][6];
+            double vx = sensor_fusion[i][3];
+            double vy = sensor_fusion[i][4];
+            double check_speed = sqrt(vx*vx + vy*vy);
+            double check_car_s = sensor_fusion[i][5];
+
+
+
+            check_car_s += ((double)prev_size*0.02*check_speed);//if using previous points can project s value out
             if(d<(2+4*lane+2) && d>(2+4*lane-2))
             {
-              double vx = sensor_fusion[i][3];
-              double vy = sensor_fusion[i][4];
-              double check_speed = sqrt(vx*vx + vy*vy);
-              double check_car_s = sensor_fusion[i][5];
-
-              check_car_s += ((double)prev_size*0.02*check_speed);//if using previous points can project s value out
               //check s values greater than mine and s gap
               if((check_car_s > car_s) && ((check_car_s - car_s)<30))
               {
                 // Do some logic here, lower referene velocity so we dont crash in to the car infront of us, could also flag to try to change lanes
                 //ref_vel = 29.5;//mph
                 too_close = true;
-                if(lane > 0)
-                {
-                  lane = 0;
-                }
+                current_lane_speed = check_speed;
               }
             }
+
+            double front_safe_dis = 20;
+            double behind_safe_dis = 10;
+            //check left lane
+            if(d <(2+4*(lane-1)+2) && d>(2+4*(lane-1)-2))
+            {
+              
+              //if check_car in behind but too close, left lane not clear
+              if((check_car_s < car_s) && ((car_s - check_car_s)<behind_safe_dis))
+              {
+                left_clear = false;
+              }
+              //if check_car in front but too close, left lane not clear 
+              else if((check_car_s > car_s) && ((check_car_s - car_s)<front_safe_dis))
+              {
+                left_clear = false;
+              }
+              else if((check_car_s < car_s) && ((check_speed - ref_vel)>10))
+              {
+                left_clear = false;
+              }
+
+              if(check_car_s > car_s)
+                left_lane_speed = check_speed;
+            }
+
+            //check right lane
+            if(d <(2+4*(lane+1)+2) && d>(2+4*(lane+1)-2))
+            {
+              //if check_car in behind but too close, right lane not clear
+              if((check_car_s < car_s) && ((car_s - check_car_s)<behind_safe_dis))
+              {
+                right_clear = false;
+              }
+              //if check_car in front but too close, right lane not clear 
+              else if((check_car_s > car_s) && ((check_car_s - car_s)<front_safe_dis))
+              {
+                right_clear = false;
+              }
+              else if((check_car_s < car_s) && ((check_speed - ref_vel)>10))
+              {
+                right_clear = false;
+              }
+
+              if(check_car_s > car_s)
+                right_lane_speed = check_speed;
+            }
+            
           }
 
           if(too_close)
           {
             ref_vel -=0.224;
+            // state machine for changing lane when too close
+            switch (lane)
+            {
+            case 0:
+              if(right_clear && (right_lane_speed > current_lane_speed))
+                lane = 1;
+              break;
+            case 1:
+              if(right_clear && left_clear)
+              {
+                if(right_lane_speed > left_lane_speed)
+                  lane = 2;
+                else if(left_lane_speed >= right_lane_speed)
+                  lane = 0;
+              }
+              else if(right_clear && (!left_clear))
+              {
+                lane = 2;
+              }
+              else if((!right_clear) && left_clear)
+              {
+                lane = 0;
+              }
+              break;
+            case 2:
+              if(left_clear && (left_lane_speed >= current_lane_speed))
+                lane = 1;
+              break;
+            default:
+              break;
+            }
           }
           else if(ref_vel < 49.5)
           {
             ref_vel += 0.224;
+            // state machine for changing lane to return to right side
+            switch (lane)
+            {
+            case 0:
+              if(right_clear && (right_lane_speed >= current_lane_speed))
+                lane = 1;
+              break;
+            case 1:
+              if(right_clear)
+              {
+                if(right_lane_speed >= current_lane_speed)
+                  lane = 2;
+              }
+              break;
+            default:
+              break;
+            }
           }
 
 
